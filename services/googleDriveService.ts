@@ -1,5 +1,6 @@
 
 import type { GeneratedData } from "../types";
+import { getGoogleDriveApiKey, getGoogleDriveClientId } from './apiKeyStore';
 
 // Add ambient declarations for Google APIs loaded from script tags
 declare global {
@@ -11,12 +12,10 @@ declare global {
     }
 }
 
-const API_KEY = process.env.GOOGLE_DRIVE_API_KEY;
-const CLIENT_ID = process.env.GOOGLE_DRIVE_CLIENT_ID;
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 
 export const isGoogleDriveConfigured = (): boolean => {
-    return !!API_KEY && !!CLIENT_ID;
+    return !!getGoogleDriveApiKey() && !!getGoogleDriveClientId();
 };
 
 let tokenClient: any | null = null;
@@ -37,12 +36,12 @@ const initializeGoogleClients = (): Promise<void> => {
                 // FIX: Use window.gapi to access the global gapi object.
                 window.gapi.load('client', {
                     callback: () => {
-                        if (!API_KEY) {
+                        if (!getGoogleDriveApiKey()) {
                             return reject(new Error("Google Drive API Key is not configured."));
                         }
                         // FIX: Use window.gapi to access the global gapi object.
                         window.gapi.client.init({
-                            apiKey: API_KEY,
+                            apiKey: getGoogleDriveApiKey(),
                             discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
                         }).then(() => {
                             gapiInited = true;
@@ -58,15 +57,15 @@ const initializeGoogleClients = (): Promise<void> => {
 
         const checkGis = () => {
             if (window.google && window.google.accounts && window.google.accounts.oauth2) {
-                 if (!CLIENT_ID) {
+                if (!getGoogleDriveClientId()) {
                     return reject(new Error("Google Drive Client ID is not configured."));
-                 }
+                }
                 try {
                     // FIX: Use window.google to access the global google object.
                     tokenClient = window.google.accounts.oauth2.initTokenClient({
-                        client_id: CLIENT_ID,
+                        client_id: getGoogleDriveClientId(),
                         scope: SCOPES,
-                        callback: () => {}, // Callback is handled by the promise logic in handleAuthClick
+                        callback: () => { }, // Callback is handled by the promise logic in handleAuthClick
                     });
                     gisInited = true;
                     if (gapiInited) resolve();
@@ -110,11 +109,11 @@ const handleAuthClick = (): Promise<void> => {
         if (!tokenClient) {
             return reject(new Error('Google Identity client not initialized.'));
         }
-        
+
         // FIX: Use window.gapi to access the global gapi object.
         const token = window.gapi.client.getToken();
         if (token && token.access_token) {
-           return resolve();
+            return resolve();
         }
 
         tokenClient.callback = (resp: any) => {
@@ -166,7 +165,7 @@ const uploadFile = async (folderId: string, blob: Blob, filename: string) => {
         name: filename,
         parents: [folderId],
     };
-    
+
     const form = new FormData();
     form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
     form.append('file', blob);
@@ -179,7 +178,7 @@ const uploadFile = async (folderId: string, blob: Blob, filename: string) => {
         },
         body: form,
     });
-    
+
     if (!res.ok) {
         const error = await res.json();
         throw new Error(`Failed to upload ${filename} to Google Drive. The server responded with: ${error.error.message}`);
@@ -190,10 +189,10 @@ export const saveToDrive = async (data: GeneratedData, campaignFolderName: strin
     try {
         setStatusMessage('Initializing Google services...');
         await initializeGoogleClients();
-        
+
         setStatusMessage('Authenticating with Google Drive...');
         await handleAuthClick();
-        
+
         setStatusMessage('Creating folder in Google Drive...');
         const rootFolderId = await getOrCreateFolder('Content Catalyst Engine Exports');
         const campaignFolderId = await getOrCreateFolder(campaignFolderName, rootFolderId);
@@ -214,7 +213,7 @@ export const saveToDrive = async (data: GeneratedData, campaignFolderName: strin
             const extension = mimeType.split('/')[1];
             const base64Data = src.split(',')[1];
             const blob = base64ToBlob(base64Data, mimeType);
-            
+
             // Optimized naming using prompt (Artistic Direction) if available
             let nameBase = label.replace(/\s+/g, '-');
             if (prompt && prompt.length > 5) {
@@ -233,7 +232,7 @@ export const saveToDrive = async (data: GeneratedData, campaignFolderName: strin
         // Upload text content
         setStatusMessage('Uploading text content...');
         let textContent = `AI Generated Content for: ${campaignFolderName}\n\n`;
-        
+
         textContent += `====================\n`;
         textContent += `PERSPECTIVE PROMPTS & VISUAL DIRECTION\n`;
         textContent += `====================\n\n`;
@@ -249,7 +248,7 @@ export const saveToDrive = async (data: GeneratedData, campaignFolderName: strin
             }
             textContent += `\n`;
         });
-        
+
         Object.entries(data.socialPosts).forEach(([platform, post]) => {
             textContent += `====================\n`;
             textContent += `${platform.toUpperCase()} POST\n`;
@@ -258,7 +257,7 @@ export const saveToDrive = async (data: GeneratedData, campaignFolderName: strin
 
         const textBlob = new Blob([textContent], { type: 'text/plain' });
         await uploadFile(campaignFolderId, textBlob, 'social-media-content.txt');
-        
+
         setStatusMessage('Successfully saved to Google Drive!');
     } catch (e) {
         const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred during the Google Drive export.';
@@ -268,9 +267,9 @@ export const saveToDrive = async (data: GeneratedData, campaignFolderName: strin
 };
 
 export const saveVideoFromUrlToDrive = async (
-    videoUrl: string, 
+    videoUrl: string,
     filename: string,
-    campaignFolderName: string, 
+    campaignFolderName: string,
     setStatusMessage: (msg: string) => void
 ): Promise<void> => {
     try {
